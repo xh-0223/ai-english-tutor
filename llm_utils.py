@@ -1,7 +1,7 @@
 from openai import OpenAI
 
 def init_deepseek_client(api_key):
-    """初始化DeepSeek大模型客户端"""
+    """初始化DeepSeek大模型客户端（完全兼容所有版本）"""
     return OpenAI(
         api_key=api_key,
         base_url="https://api.deepseek.com"
