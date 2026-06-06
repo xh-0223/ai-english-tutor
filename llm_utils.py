@@ -1,37 +1,48 @@
 from openai import OpenAI
+import time
 
 def init_deepseek_client(api_key):
-    """初始化DeepSeek大模型客户端（完全兼容所有版本）"""
+    """初始化DeepSeek大模型客户端"""
+    if not api_key:
+        raise ValueError("DeepSeek API Key不能为空")
+    
     return OpenAI(
         api_key=api_key,
         base_url="https://api.deepseek.com"
     )
 
-def get_ai_response(client, system_prompt, messages, stream=True):
+def get_ai_response(client, system_prompt, messages, stream=True, timeout=30):
     """
-    获取AI流式回复
+    获取AI流式回复（添加超时和错误处理）
     :param client: DeepSeek客户端
     :param system_prompt: 角色设定提示词
     :param messages: 对话历史
     :param stream: 是否流式输出
-    :return: AI回复流
+    :param timeout: 超时时间（秒）
+    :return: AI回复流或完整回复
     """
     full_messages = [{"role": "system", "content": system_prompt}] + messages
-    response = client.chat.completions.create(
-        model="deepseek-chat",
-        messages=full_messages,
-        temperature=0.7,
-        stream=stream
-    )
-    return response
+    
+    try:
+        response = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=full_messages,
+            temperature=0.7,
+            stream=stream,
+            timeout=timeout
+        )
+        return response
+    except Exception as e:
+        raise RuntimeError(f"AI对话失败：{str(e)}")
 
-def generate_training_report(client, scene, difficulty, messages):
+def generate_training_report(client, scene, difficulty, messages, timeout=60):
     """
-    生成详细的课后训练报告
+    生成详细的课后训练报告（添加超时和错误处理）
     :param client: DeepSeek客户端
     :param scene: 训练场景
     :param difficulty: 难度等级
     :param messages: 对话历史
+    :param timeout: 超时时间（秒）
     :return: 完整的报告文本
     """
     summary_prompt = f"""
@@ -76,10 +87,14 @@ def generate_training_report(client, scene, difficulty, messages):
     4. 全部用中文回复
     """
 
-    response = client.chat.completions.create(
-        model="deepseek-chat",
-        messages=[{"role": "user", "content": summary_prompt}],
-        temperature=0.5,
-        stream=False
-    )
-    return response.choices[0].message.content
+    try:
+        response = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[{"role": "user", "content": summary_prompt}],
+            temperature=0.5,
+            stream=False,
+            timeout=timeout
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        raise RuntimeError(f"生成报告失败：{str(e)}")
