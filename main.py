@@ -49,7 +49,7 @@ import audio_utils
 audio_utils.whisper_model = whisper_model
 audio_utils.language_tool = language_tool
 
-# -------------------------- 会话状态初始化（关键：所有状态都在这里） --------------------------
+# -------------------------- 会话状态初始化（所有状态统一管理） --------------------------
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -60,7 +60,7 @@ if "difficulty" not in st.session_state:
     st.session_state.difficulty = "中级(B1-B2)"
 
 if "recorder" not in st.session_state:
-    st.session_state.recorder = AudioRecorder()
+    st.session_state.recorder = AudioRecorder(max_duration=60)  # 最大录音60秒
 
 if "recording" not in st.session_state:
     st.session_state.recording = False
@@ -91,6 +91,20 @@ with st.sidebar:
     st.subheader("难度等级")
     st.session_state.difficulty = st.selectbox("选择难度", ["初级(A1-A2)", "中级(B1-B2)", "高级(C1-C2)"])
     
+    # 麦克风设备选择
+    st.subheader("麦克风设置")
+    try:
+        devices = AudioRecorder.get_available_devices()
+        if devices:
+            device_names = [f"{dev['index']}: {dev['name']}" for dev in devices]
+            selected_device = st.selectbox("选择麦克风", device_names)
+            selected_index = int(selected_device.split(":")[0])
+            st.session_state.recorder.set_input_device(selected_index)
+        else:
+            st.warning("未检测到可用的麦克风设备")
+    except Exception as e:
+        st.error(f"获取麦克风设备失败：{str(e)}")
+    
     st.divider()
     
     # 功能按钮
@@ -99,7 +113,7 @@ with st.sidebar:
         if st.button("清空对话", use_container_width=True):
             st.session_state.messages = []
             st.session_state.last_result = None
-            cleanup_temp_files()
+            cleanup_temp_files()  # 清空对话时删除所有临时文件
             st.rerun()
     
     with col2:
@@ -144,7 +158,7 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# 显示上一次的录音结果（关键：持久化显示）
+# 显示上一次的录音结果（持久化显示，不会一闪而过）
 if st.session_state.last_result:
     with st.chat_message("user"):
         st.audio(st.session_state.last_result["audio_path"], format="audio/wav")
@@ -160,15 +174,18 @@ if st.session_state.last_result:
             else:
                 st.success("语法完全正确！")
 
-# -------------------------- 录音和对话功能（状态持久化版） --------------------------
+# -------------------------- 录音和对话功能（最终修复版） --------------------------
 col1, col2 = st.columns([1, 5])
 
 with col1:
     if not st.session_state.recording and not st.session_state.processing:
         if st.button("🎙️ 开始录音", use_container_width=True, type="primary"):
+            # 开始新录音前，清理旧的临时文件（保留最近1个）
+            cleanup_temp_files(keep_latest=1)
+            
             st.session_state.recording = True
             st.session_state.recorder.start()
-            st.session_state.last_result = None  # 清空上一次结果
+            st.session_state.last_result = None
             st.rerun()
     elif st.session_state.recording:
         if st.button("⏹️ 停止录音", use_container_width=True, type="secondary"):
@@ -183,56 +200,65 @@ if st.session_state.processing:
     try:
         # 停止录音并保存文件
         audio_path = st.session_state.recorder.stop()
-        time.sleep(0.2)  # 确保文件完全保存
         
-        # 语音识别
-        user_text = speech_to_text(audio_path)
-        
-        # 发音评测
-        accuracy = evaluate_pronunciation(user_text)
-        
-        # 语法纠错
-        errors, corrected_text = correct_grammar(user_text)
-        
-        # 保存结果到会话状态（持久化）
-        st.session_state.last_result = {
-            "audio_path": audio_path,
-            "user_text": user_text,
-            "accuracy": accuracy,
-            "errors": errors,
-            "corrected_text": corrected_text
-        }
-        
-        # 添加到对话历史
-        st.session_state.messages.append({"role": "user", "content": user_text})
-        
-        # AI回复
-        if deepseek_client:
-            with st.chat_message("assistant"):
-                message_placeholder = st.empty()
-                full_response = ""
+        if not audio_path:
+            st.error("❌ 录音失败，没有检测到声音")
+            st.info("请检查麦克风是否正常工作，关闭其他占用麦克风的应用后重试")
+        else:
+            # 语音识别
+            with st.spinner("正在识别语音..."):
+                user_text = speech_to_text(audio_path)
+            
+            if not user_text:
+                st.warning("⚠️ 没有识别到任何内容")
+                st.info("请说清楚一点，确保麦克风离嘴10-20厘米，然后重新录制")
+            else:
+                # 发音评测
+                accuracy = evaluate_pronunciation(user_text)
                 
-                try:
-                    system_prompt = scenes[st.session_state.scene]
-                    response = get_ai_response(deepseek_client, system_prompt, st.session_state.messages)
-                    
-                    for chunk in response:
-                        if chunk.choices[0].delta.content:
-                            full_response += chunk.choices[0].delta.content
-                            message_placeholder.markdown(full_response + "▌")
-                    
-                    message_placeholder.markdown(full_response)
-                    
-                    # 添加到对话历史
-                    st.session_state.messages.append({"role": "assistant", "content": full_response})
-                except Exception as e:
-                    message_placeholder.error(f"AI回复失败：{str(e)}")
-                    st.info("提示：这通常是因为DeepSeek API余额不足，请充值或注册新账号")
+                # 语法纠错
+                errors, corrected_text = correct_grammar(user_text)
+                
+                # 保存结果到会话状态（持久化）
+                st.session_state.last_result = {
+                    "audio_path": audio_path,
+                    "user_text": user_text,
+                    "accuracy": accuracy,
+                    "errors": errors,
+                    "corrected_text": corrected_text
+                }
+                
+                # 添加到对话历史
+                st.session_state.messages.append({"role": "user", "content": user_text})
+                
+                # AI回复
+                if deepseek_client:
+                    with st.chat_message("assistant"):
+                        message_placeholder = st.empty()
+                        full_response = ""
+                        
+                        try:
+                            system_prompt = scenes[st.session_state.scene]
+                            response = get_ai_response(deepseek_client, system_prompt, st.session_state.messages)
+                            
+                            for chunk in response:
+                                if chunk.choices[0].delta.content:
+                                    full_response += chunk.choices[0].delta.content
+                                    message_placeholder.markdown(full_response + "▌")
+                            
+                            message_placeholder.markdown(full_response)
+                            
+                            # 添加到对话历史
+                            st.session_state.messages.append({"role": "assistant", "content": full_response})
+                        except Exception as e:
+                            message_placeholder.error(f"AI回复失败：{str(e)}")
+                            st.info("提示：这通常是因为DeepSeek API余额不足，请充值或注册新账号")
         
     except Exception as e:
         st.error(f"录音处理失败：{str(e)}")
+        st.info("请检查麦克风权限，关闭其他占用麦克风的应用后重试")
     finally:
-        # 重置处理状态
+        # 重置处理状态（不再在这里删除文件！）
         st.session_state.processing = False
         st.rerun()
 
@@ -240,7 +266,7 @@ with col2:
     if not st.session_state.recording and not st.session_state.processing:
         st.info("点击左侧按钮开始录音，说完后点击停止按钮")
     elif st.session_state.recording:
-        st.warning("正在录音中...点击停止按钮结束录音")
+        st.warning("正在录音中...点击停止按钮结束录音（最长60秒）")
     elif st.session_state.processing:
         st.info("正在处理录音，请稍候...")
 
