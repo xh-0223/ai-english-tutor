@@ -1,6 +1,27 @@
 AI 英语口语陪练
 一个基于 Streamlit 和 DeepSeek 大模型的智能英语口语陪练应用，支持实时录音、语音识别、发音评测、语法纠错和 AI 对话功能。
 功能特点
+# AI英语口语陪练系统
+基于Streamlit和DeepSeek大模型的智能英语口语陪练应用
+
+## 🎥 项目演示视频
+[点击观看Demo](https://www.bilibili.com/video/BV1etEh6FERd/)
+
+## ✨ 主要功能
+- 实时语音录音与识别（OpenAI Whisper）
+- 发音准确率评测（0-100分）
+- 英语语法与拼写纠错（LanguageTool）
+- 多场景AI对话（日常聊天、英文面试、餐厅点餐等）
+- 多难度等级选择（初级到高级）
+- 个性化口语训练报告生成
+- 麦克风设备选择与管理
+
+## 🚀 快速开始
+1. 克隆仓库：`git clone https://github.com/xh-0223/ai-english-tutor.git`
+2. 进入项目目录：`cd ai-english-tutor`
+3. 安装依赖：`pip install -r requirements.txt`
+4. 创建`.env`文件，添加：`DEEPSEEK_API_KEY=你的DeepSeek API Key`
+5. 运行应用：`streamlit run main.py`
 🎙️ 实时录音：点击开始 / 停止按钮控制录音，体验流畅
 🎵 音频回放：录音完成后自动显示音频播放器，可回放自己的发音
 🗣️ 语音识别：使用 OpenAI Whisper 模型，识别准确率高
